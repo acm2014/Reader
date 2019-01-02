@@ -1,0 +1,10 @@
+.idea
+.cache
+.DS_Store
+pkg/*
+bin/*
+src/github.com
+app.conf
+dump.rdb
+test.json
+run.go
