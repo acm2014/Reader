@@ -1,7 +1,6 @@
 package ispider
 
 import (
-	"Reader/tools"
 	"compress/gzip"
 	"context"
 	"errors"
@@ -10,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"reader/library/tools"
 	"strings"
 	"time"
 
@@ -37,7 +37,7 @@ type Page struct {
 
 func (p *Page) PageInit() (res string, err error) {
 	if p.Host == "" {
-		tools.SystemOutput.Error("page host 不能为空")
+		tools.Log.Error("page host 不能为空")
 		return "", errors.New("page host 不能为空")
 	}
 	// create context
@@ -109,7 +109,7 @@ func (p *Page) HttpGet() (res *http.Response, err error) {
 
 	res, err = http.DefaultClient.Do(req)
 	if err != nil {
-		tools.SystemOutput.Error("http get failed", err)
+		tools.Log.Error("http get failed", err)
 		return nil, err
 	}
 	return res, nil
@@ -127,7 +127,7 @@ func (p *Page) GetPage() (doc *goquery.Document, err error) {
 		if len(p.Param) == 0 {
 			return nil, err
 		}
-		tools.SystemOutput.Info("method a")
+		tools.Log.Info("method a")
 		res, err := p.PageInit()
 		if err != nil {
 			return nil, err
@@ -137,21 +137,21 @@ func (p *Page) GetPage() (doc *goquery.Document, err error) {
 	} else {
 		for err != nil || res.StatusCode != 200 {
 			if res != nil {
-				tools.SystemOutput.Info(res.StatusCode)
+				tools.Log.Info(res.StatusCode)
 			}
 			time.Sleep(time.Second)
 			res, err = p.HttpGet()
 		}
 		defer res.Body.Close()
-		tools.SystemOutput.Info("method b")
+		tools.Log.Info("method b")
 		reader, err := gzip.NewReader(res.Body)
 		if err != nil {
-			tools.SystemOutput.Error("gzip decode failed", err)
+			tools.Log.Error("gzip decode failed", err)
 			return nil, err
 		}
 		body, err := ioutil.ReadAll(reader)
 		if err != nil {
-			tools.SystemOutput.Error("read html failed", err)
+			tools.Log.Error("read html failed", err)
 			return nil, err
 		}
 		if p.Host == dingDian && len(p.Param) != 0 {
@@ -174,10 +174,10 @@ func (p *Page) getUrl() string {
 	if len(p.Param) == 0 && strings.Contains(u, ".html") == false {
 		u += "/"
 	}
-	tools.SystemOutput.Info("u-sss", u)
+	tools.Log.Info("u-sss", u)
 	us, _ := url.Parse(u)
 	q := us.Query()
 	us.RawQuery = q.Encode() //urlEncode
-	tools.SystemOutput.Info("request", us.String())
+	tools.Log.Info("request", us.String())
 	return us.String()
 }

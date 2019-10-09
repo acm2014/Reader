@@ -1,9 +1,9 @@
 package api
 
 import (
-	"Reader/ispider"
-	"Reader/tools"
 	"net/http"
+	"reader/ispider"
+	"reader/library/tools"
 	"strconv"
 
 	"github.com/didi/gendry/builder"

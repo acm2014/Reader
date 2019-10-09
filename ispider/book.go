@@ -1,10 +1,12 @@
 package ispider
 
 import (
-	"Reader/tools"
 	"errors"
 	"fmt"
 	"log"
+	"reader/library/cache"
+	"reader/library/dao"
+	"reader/library/tools"
 	"strings"
 	"sync"
 
@@ -56,7 +58,7 @@ func (b *Book) Skip(doc *goquery.Document) *goquery.Document {
 				url, ok := title.Attr("href")
 				fmt.Println(url)
 				if ok == false {
-					tools.SystemOutput.Error("没有找到书籍的url", b.Name)
+					tools.Log.Error("没有找到书籍的url", b.Name)
 					return
 				} else {
 					url = strings.TrimRight(url, "/")
@@ -66,14 +68,14 @@ func (b *Book) Skip(doc *goquery.Document) *goquery.Document {
 						b.Param = nil
 						log.Println(b)
 					} else {
-						tools.SystemOutput.Error("url 错误", url)
+						tools.Log.Error("url 错误", url)
 					}
 					var err error
 
 					docSkip, err = b.GetPage()
 
 					if err != nil {
-						tools.SystemOutput.Error("get page failed,", err)
+						tools.Log.Error("get page failed,", err)
 						docSkip = nil
 						return
 					}
@@ -88,55 +90,53 @@ func (b *Book) Skip(doc *goquery.Document) *goquery.Document {
 
 func (b *Book) SearchBook() error {
 	if b.Name == "" || b.Host == "" {
-		tools.SystemOutput.Error("book name or page host can't be nil")
+		tools.Log.Error("book name or page host can't be nil")
 		return errors.New("book name or page host can't be nil")
 	}
 	doc, err := b.GetPage()
 	if err != nil {
-		tools.SystemOutput.Error("get page failed", err)
+		tools.Log.Error("get page failed", err)
 		return err
 	}
 	doc = b.Skip(doc)
 	//fmt.Println(doc.Html())
 	if doc == nil {
-		tools.SystemOutput.Error("get page failed")
+		tools.Log.Error("get page failed")
 		return errors.New("get page failed")
 	}
 	b.getImage(doc)
 	b.getInfo(doc)
-	db, err := tools.NewMysqlConnection()
+	db, err := cache.NewMysql()
 	if err != nil {
-		tools.SystemOutput.Error("数据库连接失败", err)
+		tools.Log.Error("数据库连接失败", err)
 		return err
 	}
-	//defer db.Close()
-	rows, err := db.Query("select id from book where name=? and source = ?", b.Name, b.Page.Path)
-	if err != nil {
-		tools.SystemOutput.Error("get book info err", err)
-		return err
+	var book dao.Book
+	db = db.Where(&dao.Book{Name: b.Name, Source: b.Page.Path}).First(&book)
+	if db.Error != nil && !db.RecordNotFound() {
+		tools.Log.Error("get book info err", db.Error)
+		return db.Error
 	}
-	var n int64
-	if rows.Next() {
-		defer rows.Close()
-		err := rows.Scan(&n)
-		if err != nil {
-			tools.SystemOutput.Info("scan id failed", err)
-			return err
+	if db.RecordNotFound() {
+		book = dao.Book{
+			Name:           b.Name,
+			Image:          b.Image,
+			Category:       b.Category,
+			Author:         b.Author,
+			LatestChapters: b.LatestChapters,
+			Abstract:       b.Abstract,
+			BookPath:       b.Path,
+			Source:         b.Host,
 		}
-		tools.SystemOutput.Info("该书籍已经存在", b.Name, b.Image, b.Category, b.Author, b.LatestChapters, b.Abstract, b.Path, b.Host)
+		db = db.Create(&book)
+		if err = db.Error; err != nil {
+			tools.Log.Error("数据库插入失败", err)
+		}
 	} else {
-		res, err := db.Exec("INSERT INTO book (`name`,image,category,author,latest_chapters,abstract,book_path,source) VALUES (?,?,?,?,?,?,?,?)", b.Name, b.Image, b.Category, b.Author, b.LatestChapters, b.Abstract, b.Path, b.Host)
-		if err != nil {
-			tools.SystemOutput.Error("insert into book err", err)
-			return err
-		}
-		n, err = res.LastInsertId()
-		if err != nil {
-			tools.SystemOutput.Error("get last insert id failed", err)
-			return err
-		}
+		tools.Log.Info("该书籍已经存在", b.Name, b.Image, b.Category, b.Author, b.LatestChapters, b.Abstract, b.Path, b.Host)
 	}
-	b.getAllChapters(doc, n)
+	// TODO ,需要检验id是否更新
+	b.getAllChapters(doc, int64(book.ID))
 	return nil
 }
 
@@ -156,15 +156,15 @@ func (b *Book) getImage(doc *goquery.Document) {
 		url = strings.TrimLeft(url, "/")
 		b.Path = strings.Split(url, "/")[0]
 	}
-	tools.SystemOutput.Info(b.Path)
-	tools.SystemOutput.Info(b.Image)
+	tools.Log.Info(b.Path)
+	tools.Log.Info(b.Image)
 }
 
 //获取书籍信息: 类别, 作者, 最新章节, 摘要
 func (b *Book) getInfo(doc *goquery.Document) {
-	//tools.SystemOutput.Info(doc.Html())
+	//tools.Log.Info(doc.Html())
 	txt := doc.Find("div.con_top").Text()
-	tools.SystemOutput.Info(txt)
+	tools.Log.Info(txt)
 	txt = strings.Replace(txt, " ", "", -1)
 	b.Category = strings.Split(txt, ">")[1]
 	info := doc.Find("div#maininfo").Find("#info").Find("p")
@@ -177,10 +177,10 @@ func (b *Book) getInfo(doc *goquery.Document) {
 	b.Abstract = strings.TrimRight(b.Abstract, " ")
 	b.Abstract = strings.TrimRight(b.Abstract, "\n")
 	b.Abstract = strings.TrimRight(b.Abstract, "\t")
-	tools.SystemOutput.Info(b.Category)
-	tools.SystemOutput.Info(b.Author)
-	tools.SystemOutput.Info(b.LatestChapters)
-	tools.SystemOutput.Info(b.Abstract)
+	tools.Log.Info(b.Category)
+	tools.Log.Info(b.Author)
+	tools.Log.Info(b.LatestChapters)
+	tools.Log.Info(b.Abstract)
 }
 
 func (b *Book) getAllChapters(doc *goquery.Document, bookId int64) {
@@ -192,7 +192,7 @@ func (b *Book) getAllChapters(doc *goquery.Document, bookId int64) {
 		if ok == true {
 			c.Path = path
 		} else {
-			tools.SystemOutput.Error("can't get chapter's path chapter's name = ", c.Name)
+			tools.Log.Error("can't get chapter's path chapter's name = ", c.Name)
 			return
 		}
 		//页面跳转
@@ -209,23 +209,27 @@ func (c *Chapter) GetChapter(bookId int64, wg *sync.WaitGroup, chapterId int64) 
 	defer wg.Done()
 	doc, err := c.GetPage()
 	if err != nil {
-		tools.SystemOutput.Error("get page failed", err)
+		tools.Log.Error("get page failed", err)
 		return
 	}
 	c.Content, err = doc.Find("#content").Html()
 	fmt.Println(c.Content, err)
-	db, err := tools.NewMysqlConnection()
+	db, err := cache.NewMysql()
 	if err != nil {
-		tools.SystemOutput.Error("数据库连接失败", err)
+		tools.Log.Error("数据库连接失败", err)
 		return
 	}
 	//defer db.Close()
-	_, err = db.Exec("INSERT INTO chapter (id, book_id,`name`,chapter_id,content,path,source) VALUES (?,?,?,?,?,?,?)",
-		fmt.Sprintf("%d.%d", bookId, chapterId), bookId, c.Name, chapterId, c.Content, c.Path, c.Host)
-	if err != nil {
-		tools.SystemOutput.Info(bookId, c.Name, c.Content, c.Path, c.Host)
-		tools.SystemOutput.Error("inset into chapter failed", err)
+	chapter := dao.Chapter{
+		ID:        fmt.Sprintf("%d.%d", bookId, chapterId),
+		BookID:    int(bookId),
+		ChapterID: int(chapterId),
+		Name:      c.Name,
+		Content:   c.Content,
+		Path:      c.Path,
+		Source:    c.Host,
 	}
-	tools.SystemOutput.Notice("success", c.Name)
+	db.Create(&chapter)
+	tools.Log.Debug("success", c.Name)
 	return
 }
