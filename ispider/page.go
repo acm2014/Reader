@@ -45,6 +45,7 @@ func (p *Page) PageInit() (res string, err error) {
 	defer cancel()
 
 	// create chrome instance
+
 	c, err := chromedp.New(ctxt, chromedp.WithLog(log.Printf))
 	if err != nil {
 		log.Fatal(err)

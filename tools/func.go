@@ -3,12 +3,12 @@ package tools
 import (
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/axgle/mahonia"
 	"github.com/didi/gendry/manager"
 	_ "github.com/go-sql-driver/mysql"
-	"sync"
 )
 
 func Convert(src string, srcCode string, targetCode string) string {
